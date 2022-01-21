@@ -1,0 +1,209 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(igraph)
+library(bnlearn)
+library(miic)
+library(ggm)
+library(pcalg)
+
+```
+
+
+
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install(c("graph", "RBGL", "Rgraphviz"))
+```
+
+
+```{r}
+help(insurance)
+data(insurance)
+```
+
+```{r}
+hcm = hc(insurance)
+hcm
+```
+```{r}
+insurance_hc_adj=amat(hcm)
+insurance_hc_adj
+```
+```{r}
+insurance_hc_net = igraph::graph_from_adjacency_matrix(insurance_hc_adj)
+plot(insurance_hc_net, edge.arrow.size = .3,
+     edge.color = "orange", vertex.color = "orange",
+     vertex.frame.color ="#FFFFFF",
+     vertex.label.color = "black", vertex.label.cex = .6,
+     layout =layout_components)
+```
+
+
+```{r}
+modelstring = paste0("[Age][Mileage][SocioEcon|Age][GoodStudent|Age:SocioEcon]",
+                     "[RiskAversion|Age:SocioEcon][OtherCar|SocioEcon][VehicleYear|SocioEcon:RiskAversion]",
+                     "[MakeModel|SocioEcon:RiskAversion][SeniorTrain|Age:RiskAversion]",
+                     "[HomeBase|SocioEcon:RiskAversion][AntiTheft|SocioEcon:RiskAversion]",
+                     "[RuggedAuto|VehicleYear:MakeModel][Antilock|VehicleYear:MakeModel]",
+                     "[DrivingSkill|Age:SeniorTrain][CarValue|VehicleYear:MakeModel:Mileage]",
+                     "[Airbag|VehicleYear:MakeModel][DrivQuality|RiskAversion:DrivingSkill]",
+                     "[Theft|CarValue:HomeBase:AntiTheft][Cushioning|RuggedAuto:Airbag]",
+                     "[DrivHist|RiskAversion:DrivingSkill][Accident|DrivQuality:Mileage:Antilock]",
+                     "[ThisCarDam|RuggedAuto:Accident][OtherCarCost|RuggedAuto:Accident]",
+                     "[MedCost|Age:Accident:Cushioning][ILiCost|Accident]",
+                     "[ThisCarCost|ThisCarDam:Theft:CarValue][PropCost|ThisCarCost:OtherCarCost]")
+insurance_gt = model2network(modelstring)
+insurance_gt
+class(insurance_gt)
+insurance_gt_adj=amat(insurance_gt)
+insurance_gt_adj
+insurance_gt_net= igraph::graph_from_adjacency_matrix(insurance_gt_adj)
+plot(insurance_gt_net, edge.arrow.size=.3, edge.color="orange", vertex.color='orange',
+     vertex.frame.color='#FFFFFF', vertex.label.color='black', vertex.label.cex= .6,
+     layout= layout_components)
+```
+ 
+
+
+```{r}
+# Compute the likelihood score of your graph
+score(hcm, insurance)
+score(hcm, insurance, type = "aic")
+score(hcm, insurance, type = "bde")
+
+```
+```{r}
+# (2.e) Compute TP, FP, FN, Precision, Recall and Fscore
+gt_net_edges = as_edgelist(insurance_gt_net)
+pred_net_edges = as_edgelist(insurance_hc_net)
+```
+```{r}
+# TP: number of edges in insurance_hc_net that are in insurance_gt_net
+gt_net_edges_sort = t(apply(gt_net_edges, 1, sort))
+gt_net_edges_merge = paste(gt_net_edges_sort[,1], gt_net_edges_sort[,2], sep="_")
+gt_net_edges_merge = unique(gt_net_edges_merge)
+
+```
+
+
+```{r}
+pred_net_edges_sort = t(apply(pred_net_edges, 1, sort))
+pred_net_edges_merge = paste(pred_net_edges_sort[,1], pred_net_edges_sort[,2], sep="_")
+pred_net_edges_merge = unique(pred_net_edges_merge)
+```
+
+```{r}
+TP = length(intersect(gt_net_edges_merge, pred_net_edges_merge))
+TP
+```
+
+```{r}
+# FP: number of edges in insurance_hc_net that are NOT in insurance_gt_net
+FP = length(pred_net_edges_merge)-TP
+FP
+```
+```{r}
+# FN: number of edges in insurance_gt_net that are NOT in insurance_hc_net
+FN = length(gt_net_edges_merge)-TP
+FN
+```
+
+```{r}
+# Precision
+Prec = TP/(TP+FP)
+Prec
+```
+
+
+```{r}
+# Recall
+Rec = TP/(TP+FN)
+Rec
+```
+
+```{r}
+# F-score
+Fscore = 2*Prec*Rec/(Prec+Rec)
+Fscore
+```
+
+```{r}
+# --------------
+# Constraint-based: PC
+# --------------
+# (3.a) Reconstruct with PC (stable)
+insurance_data = data.matrix(insurance)
+insurance_data = insurance_data-1
+n_lev = rep(-1, ncol(insurance_data))
+for(iCol in 1:length(n_lev)){
+  n_lev[iCol] = length(unique(insurance_data[,iCol]))
+}
+suffStat <- list(dm = insurance_data, nlev = n_lev, adaptDF = FALSE)
+  pc.insurance <- pc(suffStat, indepTest = disCItest,
+                   p = ncol(insurance_data), alpha = 0.01,
+                   verbose = TRUE)
+```
+
+
+```{r}
+# Make a basic plot
+plot(pc.insurance)
+ 
+```
+
+```{r}
+pc.insurance_bn = as.bn(pc.insurance, check.cycles = FALSE)
+ 
+```
+
+```{r}
+ 
+plot(pc.insurance_bn)
+```
+
+
+```{r}
+# Make a better plot
+pc.insurance_bn_net = igraph::graph_from_adjacency_matrix(amat(pc.insurance_bn))
+plot(pc.insurance_bn_net, edge.arrow.size = .3,
+     edge.color = "orange", vertex.color = "orange",
+     vertex.frame.color ="#FFFFFF",
+     vertex.label.color = "black", vertex.label.cex = .6,
+     vertex.label = colnames(insurance_data),
+     layout = layout.fruchterman.reingold)
+```
+
+
+```{r}
+# (3.d) Compute TP, FP, FN, Precision, Recall and Fscore
+pred_net_edges = as_edgelist(pc.insurance_bn_net)
+pred_net_edges[,1] <- colnames(insurance_data)[as.integer(pred_net_edges[,1])]
+pred_net_edges[,2] <- colnames(insurance_data)[as.integer(pred_net_edges[,2])]
+pred_net_edges_sort = t(apply(pred_net_edges, 1, sort))
+pred_net_edges_merge = paste(pred_net_edges_sort[,1], pred_net_edges_sort[,2], sep="_")
+pred_net_edges_merge = unique(pred_net_edges_merge)
+```
+
+```{r}
+TP = length(intersect(gt_net_edges_merge, pred_net_edges_merge))
+FP = length(pred_net_edges_merge)-TP
+FN = length(gt_net_edges_merge)-TP
+
+print(TP)
+print(FP)
+print(FN)
+```
+
+```{r}
+Prec = TP/(TP+FP)
+Rec = TP/(TP+FN)
+Fscore = 2*Prec*Rec/(Prec+Rec)
+Fscore
+```
+
