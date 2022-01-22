@@ -1,0 +1,479 @@
+---
+title: "Analysis of genomic and ploidy alterations in breast tumors"
+output: html_notebook
+---
+
+#  2.Network reconstruction with the PC approach
+
+
+```{r}
+library("miic")
+library("bnlearn")
+library("janitor")
+library("igraph")
+library("qgraph")
+library("pcalg")
+```
+
+
+
+```{r}
+Data=cosmicCancer
+View(cosmicCancer)
+```
+
+```{r}
+head(cosmicCancer)
+dim(cosmicCancer)
+colnames(cosmicCancer)
+```
+```{r}
+
+cosmicCancer_data = data.matrix(cosmicCancer)
+cosmicCancer_data= cosmicCancer_data -1
+n_lev = rep(-1, ncol(cosmicCancer_data))
+for(iCol in 1:length(n_lev)){
+  n_lev[iCol] = length(unique(cosmicCancer_data[,iCol]))
+}
+
+suffStat <- list(dm = cosmicCancer_data, nlev = n_lev, adaptDF = FALSE)
+
+
+```
+
+
+```{r, error=TRUE}
+res_pc.cosmicCancer <- pc(suffStat,indepTest = disCItest, p = ncol(cosmicCancer_data), alpha = 0.01,verbose = TRUE)
+
+```
+
+## Q2
+* A) Les données ne sont pas continues dans le dataset donc on ne peut pas appliquer PC directement sur ce dataset.
+
+
+```{r}
+##Cleaning data
+#Missing value
+sum(is.na(cosmicCancer)) # sommer le nombre des éléments NA dans le dataset
+summary(cosmicCancer)
+dataCleaned<- cosmicCancer[complete.cases(cosmicCancer), ]
+dim(dataCleaned)
+ 
+same <- sapply(dataCleaned, function(.col){ all(.col[1L] == .col)})
+dataCleaned <- dataCleaned[!same]
+dim(dataCleaned)
+#Gerer la varaible 'Ploidy' 
+dataCleaned[,"Ploidy"]=as.factor(dataCleaned[,"Ploidy"])
+class(dataCleaned[,"Ploidy"])
+levels(dataCleaned[,"Ploidy"])
+```
+```{r}
+dim(cosmicCancer)
+```
+
+```{r}
+dim(dataCleaned)
+```
+
+## Q3
+* B) Nous avons enlevé 8 observations après nettoyage des données et avons supprimé 14 varaibles par rapport au dataset initial.
+
+```{r}
+
+data_pc=data.matrix(dataCleaned)
+data_pc=data_pc-1
+nlevels=apply(data_pc,2,function(x) length(attr(as.factor(x), "levels")))
+suffStat=list(dm = data_pc, nlev=nlevels, adaptDF = FALSE)
+```
+
+
+```{r}
+
+pc_model <- pc(suffStat, indepTest=disCItest, alpha=0.01, labels=colnames(data_pc))
+```
+
+```{r}
+
+pc_model
+```
+
+```{r}
+pc<-as.bn(pc_model, check.cycles = FALSE)
+adj_pc<-amat(pc)
+graph_pc = graph_from_adjacency_matrix(adj_pc)
+```
+
+
+
+
+```{r, fig.height = 10, fig.width = 10, fig.align = "center"}
+### affichage du graphe (net) obtenu après application de pc et sans isolation
+plot(graph_pc, edge.arrow.size = .3,
+     edge.color = "orange", vertex.color = "orange",
+     vertex.frame.color ="#FFFFFF",
+     vertex.label.color = "black", vertex.label.cex = .6,
+     vertex.label = colnames(cosmicCancer_data),
+     layout = layout.fruchterman.reingold)
+```
+## Q4
+
+```{r}
+Isolated = which(igraph::degree(graph_pc)==0)
+graph_pc_I = delete.vertices(graph_pc, Isolated)
+```
+
+```{r}
+library(qgraph)
+e <- get.edgelist(graph_pc_I,names=FALSE)
+l <- qgraph.layout.fruchtermanreingold(e,vcount=vcount(graph_pc_I),
+                                      area=8*(vcount(graph_pc_I)^2),repulse.rad=(vcount(graph_pc_I)^3.1))
+
+colors = rep("cyan3", length(V(graph_pc_I)))
+colors[names(V(graph_pc_I)) == tolower(names(V(graph_pc_I)))] = "chartreuse3"
+colors[names(V(graph_pc_I)) == "Ploidy"] = "brown3"
+```
+
+
+```{r,  fig.height = 10, fig.width = 10, fig.align = "center"}
+### affichage du graphe  obtenu après application de pc avec isolation et  une coloration des noeuds
+ 
+plot(graph_pc_I,
+     vertex.color=colors,
+     edge.arrow.size = .4,
+     vertex.frame.color ="#ffffff",
+     vertex.label.color = "black", vertex.label.cex = .8,
+     layout =l)
+```
+
+
+Nous remarquons que la variable Ploidy est affectée par tp35 et PPP2R2A. Elle n'affecte aucune varaible. 
+
+
+## Q5
+* Alpha = 0.001
+```{r}
+
+data_pc=data.matrix(dataCleaned)
+data_pc=data_pc-1
+nlevels=apply(data_pc,2,function(x) length(attr(as.factor(x), "levels")))
+suffStat=list(dm = data_pc, nlev=nlevels, adaptDF = FALSE)
+```
+
+
+```{r}
+pc_model_001 <- pc(suffStat, indepTest=disCItest, alpha=0.001, labels=colnames(data_pc))
+```
+
+
+```{r}
+pc_model_001
+```
+Nous remarquons qu'il ya moins d'edge avec cette configuration (le total avec alpha = 0.01 égal à 57 )
+
+
+```{r}
+#pc_001<-as.bn(pc_model_001, check.cycles = FALSE)
+#adj_pc__001<-amat(pc_001)
+#graph_pc_001 = graph_from_adjacency_matrix(adj_pc__001)
+#Isolated = which(igraph::degree(graph_pc_001)==0)
+#graph_pc_I_001 = delete.vertices(graph_pc_001, Isolated)
+
+pc_001<-as.bn(pc_model_001, check.cycles = FALSE)
+adj_pc_001<-amat(pc_001)
+graph_pc_001 = graph_from_adjacency_matrix(adj_pc_001)
+
+```
+
+
+
+
+```{r, fig.height = 10, fig.width = 10, fig.align = "center"}
+### affichage du graphe (net) obtenu après application de pc et sans isolation
+plot(graph_pc_001, edge.arrow.size = .3,
+     edge.color = "orange", vertex.color = "orange",
+     vertex.frame.color ="#FFFFFF",
+     vertex.label.color = "black", vertex.label.cex = .6,
+     vertex.label = colnames(cosmicCancer_data),
+     layout = layout.fruchterman.reingold)
+```
+
+
+
+```{r}
+Isolated = which(igraph::degree(graph_pc_001)==0)
+graph_pc_I_001 = delete.vertices(graph_pc_001, Isolated)
+```
+
+```{r}
+library(qgraph)
+e <- get.edgelist(graph_pc_I_001,names=FALSE)
+l <- qgraph.layout.fruchtermanreingold(e,vcount=vcount(graph_pc_I_001),
+                                      area=8*(vcount(graph_pc_I_001)^2),repulse.rad=(vcount(graph_pc_I_001)^3.1))
+
+colors = rep("cyan3", length(V(graph_pc_I_001)))
+colors[names(V(graph_pc_I_001)) == tolower(names(V(graph_pc_I_001)))] = "chartreuse3"
+colors[names(V(graph_pc_I_001)) == "Ploidy"] = "brown3"
+```
+ 
+ 
+ 
+```{r, fig.height = 10, fig.width = 10, fig.align = "center"}
+### affichage du graphe (net) obtenu après application de pc et sans isolation
+plot(graph_pc_I_001,
+     vertex.color=colors,
+     edge.arrow.size = .4,
+     vertex.frame.color ="#ffffff",
+     vertex.label.color = "black", vertex.label.cex = .8,
+     layout =l)
+```
+
+Nous remaqrquons que le noeud Plody ne figure pas dans ce graphe. 
+
+* Alpha = 0.02
+```{r}
+
+data_pc=data.matrix(dataCleaned)
+data_pc=data_pc-1
+nlevels=apply(data_pc,2,function(x) length(attr(as.factor(x), "levels")))
+suffStat=list(dm = data_pc, nlev=nlevels, adaptDF = FALSE)
+```
+
+
+
+```{r}
+pc_model_05 <- pc(suffStat, indepTest=disCItest, alpha=0.02, labels=colnames(data_pc))
+```
+
+
+```{r}
+pc_model_02 = pc_model_05
+pc_model_02
+
+```
+
+Ce cas contient plus d'edge que les deux autres cas précédents (avec alpha = 0.01 et alpha = 0.001)
+
+
+```{r}
+pc_02<-as.bn(pc_model_02, check.cycles = FALSE)
+adj_pc_02<-amat(pc_02)
+graph_pc_02 = graph_from_adjacency_matrix(adj_pc_02)
+
+```
+
+```{r, fig.height = 10, fig.width = 10, fig.align = "center"}
+### affichage du graphe (net) obtenu après application de pc et sans isolation
+plot(graph_pc_02, edge.arrow.size = .3,
+     edge.color = "orange", vertex.color = "orange",
+     vertex.frame.color ="#FFFFFF",
+     vertex.label.color = "black", vertex.label.cex = .6,
+     vertex.label = colnames(cosmicCancer_data),
+     layout = layout.fruchterman.reingold)
+```
+```{r}
+Isolated = which(igraph::degree(graph_pc_02)==0)
+graph_pc_I_02 = delete.vertices(graph_pc_02, Isolated)
+```
+
+```{r}
+library(qgraph)
+e <- get.edgelist(graph_pc_I_02,names=FALSE)
+l <- qgraph.layout.fruchtermanreingold(e,vcount=vcount(graph_pc_I_02),
+                                      area=8*(vcount(graph_pc_I_02)^2),repulse.rad=(vcount(graph_pc_I_02)^3.1))
+
+colors = rep("cyan3", length(V(graph_pc_I_02)))
+colors[names(V(graph_pc_I_02)) == tolower(names(V(graph_pc_I_02)))] = "chartreuse3"
+colors[names(V(graph_pc_I_02)) == "Ploidy"] = "brown3"
+```
+
+```{r, fig.height = 10, fig.width = 10, fig.align = "center"}
+### affichage du graphe (net) obtenu après application de pc et sans isolation
+plot(graph_pc_I_02,
+     vertex.color=colors,
+     edge.arrow.size = .4,
+     vertex.frame.color ="#ffffff",
+     vertex.label.color = "black", vertex.label.cex = .8,
+     layout =l)
+```
+Contrairement au cas précédent (alpha = 0.001), le noeud Plody figure sur le graphe mais il n'est affecté par aucun autre noeaud.
+
+
+## Q6
+
+
+### alpha = 0.01 
+```{r}
+
+list=list()
+#On récupere la liste des lowercase avec un compteur=0
+for(node in names(V(graph_pc_I))) {
+    if (node == tolower(node)) { list[node]=0 }
+}
+
+#A chaque fois qu'on detecte une relation avec un uppercase on incrémente le compteur
+for(i in 1:nrow(get.edgelist(graph_pc_I))) {
+    r <- get.edgelist(graph_pc_I)[i,]
+    if (r[1] == toupper(r[1]) & r[2] == tolower(r[2])) { list[r[2]]=list[[r[2]]]+1}
+    if (r[2] == toupper(r[2]) & r[1] == tolower(r[1])) { list[r[1]]=list[[r[1]]]+1}
+}
+
+l<-sort(unlist(list), decreasing=T)
+l
+
+```
+* Nous remarquons que tp53 et ect2 sont liées aux variables de gene expression.
+* Nous constatons aussi que tp53 est celle qui a le plus de liaisons aux variables de gene expression.
+
+```{r}
+
+list=list()
+#On récupere la liste des lowercase avec un compteur=0
+for(node in names(V(graph_pc_I))) {
+    if (node == tolower(node)) { list[node]=0 }
+}
+
+#A chaque fois qu'on detecte une relation avec un uppercase on incrémente le compteur
+for(i in 1:nrow(get.edgelist(graph_pc_I))) {
+    r <- get.edgelist(graph_pc_I)[i,]
+    if (r[1] == "Ploidy" & r[2] == tolower(r[2])) { list[r[2]]=list[[r[2]]]+1}
+    if (r[2] == "Ploidy" & r[1] == tolower(r[1])) { list[r[1]]=list[[r[1]]]+1}
+}
+
+l<-sort(unlist(list), decreasing=T)
+l
+ 
+```
+
+Pour les Noeuds en miniscule, il ya que la variable tp53 qui est liée à Plody.
+
+
+
+* Les hubs
+```{r}
+#Les hubs
+sort(hub_score(graph_pc_I)$vector, decreasing = TRUE)[1:10]
+```
+* Les top 10 noeuds en fonction de la mesure de la centralité d’interdépendance : 
+
+```{r}
+sort(betweenness(graph_pc_I), decreasing = TRUE)[1:10]
+```
+
+### alpha = 0.001
+
+```{r}
+
+list=list()
+#On récupere la liste des lowercase avec un compteur=0
+for(node in names(V(graph_pc_I_001))) {
+    if (node == tolower(node)) { list[node]=0 }
+}
+
+#A chaque fois qu'on detecte une relation avec un uppercase on incrémente le compteur
+for(i in 1:nrow(get.edgelist(graph_pc_I_001))) {
+    r <- get.edgelist(graph_pc_I_001)[i,]
+    if (r[1] == toupper(r[1]) & r[2] == tolower(r[2])) { list[r[2]]=list[[r[2]]]+1}
+    if (r[2] == toupper(r[2]) & r[1] == tolower(r[1])) { list[r[1]]=list[[r[1]]]+1}
+}
+
+l<-sort(unlist(list), decreasing=T)
+l
+
+```
+Nous remaqruons qu'il y a uniquemen le noeud tp53 qui est liée aux variables gene. 
+
+
+
+
+```{r}
+
+list=list()
+#On récupere la liste des lowercase avec un compteur=0
+for(node in names(V(graph_pc_I_001))) {
+    if (node == tolower(node)) { list[node]=0 }
+}
+
+#A chaque fois qu'on detecte une relation avec un uppercase on incrémente le compteur
+for(i in 1:nrow(get.edgelist(graph_pc_I_001))) {
+    r <- get.edgelist(graph_pc_I_001)[i,]
+    if (r[1] == "Ploidy" & r[2] == tolower(r[2])) { list[r[2]]=list[[r[2]]]+1}
+    if (r[2] == "Ploidy" & r[1] == tolower(r[1])) { list[r[1]]=list[[r[1]]]+1}
+}
+
+l<-sort(unlist(list), decreasing=T)
+l
+ 
+```
+
+Pour les Noeuds en miniscule, il ya aucun qui est liée à Plody car Plody ne figure même pas dans les noeuds du graphes. 
+
+
+
+```{r}
+#Les hubs
+sort(hub_score(graph_pc_I_001)$vector, decreasing = TRUE)[1:10]
+```
+* Les top 10 noeuds en fonction de la mesure de la centralité d’interdépendance :
+
+```{r}
+sort(betweenness(graph_pc_I_001), decreasing = TRUE)[1:10]
+```
+
+
+### alpha = 0.02
+
+```{r}
+
+list=list()
+#On récupere la liste des lowercase avec un compteur=0
+for(node in names(V(graph_pc_I_02))) {
+    if (node == tolower(node)) { list[node]=0 }
+}
+
+#A chaque fois qu'on detecte une relation avec un uppercase on incrémente le compteur
+for(i in 1:nrow(get.edgelist(graph_pc_I_02))) {
+    r <- get.edgelist(graph_pc_I_02)[i,]
+    if (r[1] == toupper(r[1]) & r[2] == tolower(r[2])) { list[r[2]]=list[[r[2]]]+1}
+    if (r[2] == toupper(r[2]) & r[1] == tolower(r[1])) { list[r[1]]=list[[r[1]]]+1}
+}
+
+l<-sort(unlist(list), decreasing=T)
+l
+
+```
+* Nous remarquons que tp53 et c soube2 nt liées aux variables de gene expression.
+* Nous constatons aussi que tp53 est celle qui a le plus de liaisons aux variables de gene expression.
+
+
+```{r}
+
+list=list()
+#On récupere la liste des lowercase avec un compteur=0
+for(node in names(V(graph_pc_I_02))) {
+    if (node == tolower(node)) { list[node]=0 }
+}
+
+#A chaque fois qu'on detecte une relation avec un uppercase on incrémente le compteur
+for(i in 1:nrow(get.edgelist(graph_pc_I_02))) {
+    r <- get.edgelist(graph_pc_I_02)[i,]
+    if (r[1] == "Ploidy" & r[2] == tolower(r[2])) { list[r[2]]=list[[r[2]]]+1}
+    if (r[2] == "Ploidy" & r[1] == tolower(r[1])) { list[r[1]]=list[[r[1]]]+1}
+}
+
+l<-sort(unlist(list), decreasing=T)
+l
+ 
+```
+Pour les Noeuds en miniscule, il y a aucun qui est liée à Plody. 
+
+
+```{r}
+#Les hubs
+sort(hub_score(graph_pc_I_02)$vector, decreasing = TRUE)[1:10]
+```
+
+* Les top 10 noeuds en fonction de la mesure de la centralité d’interdépendance :
+
+```{r}
+sort(betweenness(graph_pc_I_02), decreasing = TRUE)[1:10]
+```
